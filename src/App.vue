@@ -1,15 +1,22 @@
 <template>
   <div id="app">
-    <UiShowcase />
+    <Demo />
   </div>
 </template>
 
 <script>
-import UiShowcase from './components/playground/UiShowcase.vue'
+import Demo from './components/Demo.vue'
 
 export default {
+  name: 'App',
   components: {
-    UiShowcase
-  }
+    Demo,
+  },
 }
 </script>
+
+<style>
+body {
+  background: #f8f9fa;
+}
+</style>

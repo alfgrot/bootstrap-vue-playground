@@ -1,19 +1,19 @@
 <template>
-  <b-container class="my-4">
-    <h3>Layout Demo</h3>
+  <div class="mb-5">
+    <h2>Layout</h2>
+
     <b-row>
       <b-col cols="3">
-        <div class="p-3 bg-light border">Sidebar</div>
+        <b-card>Sidebar</b-card>
       </b-col>
+
       <b-col>
-        <div class="p-3 bg-white border">Main content</div>
+        <b-card>Main content</b-card>
       </b-col>
     </b-row>
-  </b-container>
+  </div>
 </template>
 
 <script>
-export default {
-  name: 'LayoutDemo'
-}
+export default {}
 </script>
