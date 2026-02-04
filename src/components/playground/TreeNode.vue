@@ -1,165 +1,179 @@
 <template>
   <div class="py-1">
-    <div class="d-flex align-items-center" :style="{ paddingLeft: `${level * 22}px` }">
+    <div
+      class="tree-row d-flex align-items-center"
+      :class="rowClasses"
+      :style="{ paddingLeft: `${level * 22}px` }"
+      draggable="true"
+      @click="select"
+      @dragstart="onDragStart"
+      @dragover="onDragOver"
+      @dragleave="dropPosition = null"
+      @drop="onDrop"
+    >
       <b-button
         v-if="hasChildren"
         size="sm"
         variant="link"
         class="p-0 mr-2"
-        @click="toggle"
+        @click.stop="expanded = !expanded"
       >
         <b-icon :icon="expanded ? 'caret-down-fill' : 'caret-right-fill'" />
       </b-button>
 
-      <span v-else class="mr-2" style="width: 18px;"></span>
+      <span v-else class="mr-2" style="width:18px"></span>
 
-      <b-badge
-        class="mr-2"
-        :variant="node.type === 'folder' ? 'primary' : 'secondary'"
-      >
+      <b-badge class="mr-2" :variant="node.type === 'folder' ? 'primary' : 'secondary'">
+        <b-icon :icon="node.type === 'folder' ? 'folder-fill' : 'file-earmark'" class="mr-1" />
         {{ node.type }}
       </b-badge>
 
       <div class="flex-grow-1">
-        <div v-if="!editing">
-          <strong>{{ node.title }}</strong>
-          <small class="text-muted ml-2">#{{ node.id }}</small>
-        </div>
-
-        <!-- ВАЖНО: это не form, поэтому Enter не сабмитит страницу -->
-        <div v-else class="d-flex align-items-center">
-          <b-form-input
-            v-model="editTitle"
-            size="sm"
-            class="mr-2"
-            @keydown.enter.prevent="saveEdit"
-            @keydown.esc.prevent="cancelEdit"
-          />
-          <b-button size="sm" variant="success" class="mr-2" @click="saveEdit">
-            Сохранить
-          </b-button>
-          <b-button size="sm" variant="outline-secondary" @click="cancelEdit">
-            Отмена
-          </b-button>
-        </div>
+        <strong v-html="highlight(node.title)" />
       </div>
 
-      <div class="ml-2 d-flex">
-        <b-button size="sm" variant="outline-primary" class="mr-2" @click="startEdit">
-          <b-icon icon="pencil" />
-        </b-button>
-
-        <b-button size="sm" variant="outline-success" class="mr-2" @click="addChild">
-          <b-icon icon="plus" />
-        </b-button>
-
-        <b-button size="sm" variant="outline-danger" @click="deleteSelf">
-          <b-icon icon="trash" />
-        </b-button>
-      </div>
+      <b-dropdown size="sm" variant="outline-secondary" right>
+        <template #button-content>
+          <b-icon icon="three-dots-vertical" />
+        </template>
+        <b-dropdown-item @click.stop="addChild">Добавить</b-dropdown-item>
+        <b-dropdown-item class="text-danger" @click.stop="deleteSelf">
+          Удалить
+        </b-dropdown-item>
+      </b-dropdown>
     </div>
 
-    <div v-if="expanded && hasChildren" class="mt-1">
+    <b-collapse :visible="expanded && hasChildren">
       <TreeNode
         v-for="child in node.children"
         :key="child.id"
         :node="child"
         :level="level + 1"
+        :selected-ids="selectedIds"
+        :search="search"
+        @select="$emit('select', $event)"
+        @drop-node="$emit('drop-node', $event)"
         @update="$emit('update')"
-        @delete-child="removeChild"
       />
-    </div>
+    </b-collapse>
   </div>
 </template>
 
 <script>
 export default {
   name: 'TreeNode',
+
   props: {
-    node: { type: Object, required: true },
-    level: { type: Number, default: 0 },
+    node: Object,
+    level: Number,
+    selectedIds: Array,
+    search: String,
   },
+
   data() {
     return {
       expanded: true,
-      editing: false,
-      editTitle: '',
+      dropPosition: null, // before | inside | after
     }
   },
+
   computed: {
     hasChildren() {
-      return this.node.children && this.node.children.length > 0
+      return this.node.children && this.node.children.length
+    },
+
+    rowClasses() {
+      return {
+        selected: this.selectedIds.includes(this.node.id),
+        'drop-before': this.dropPosition === 'before',
+        'drop-after': this.dropPosition === 'after',
+        'drop-inside': this.dropPosition === 'inside',
+      }
     },
   },
+
   methods: {
-    toggle() {
-      this.expanded = !this.expanded
+    select(e) {
+      this.$emit('select', {
+        id: this.node.id,
+        ctrl: e.ctrlKey || e.metaKey,
+        shift: e.shiftKey,
+      })
     },
 
-    startEdit() {
-      this.editing = true
-      this.editTitle = this.node.title
+    highlight(text) {
+      if (!this.search) return text
+      return text.replace(
+        new RegExp(`(${this.search})`, 'gi'),
+        '<mark>$1</mark>'
+      )
     },
 
-    cancelEdit() {
-      this.editing = false
-      this.editTitle = ''
+    onDragStart(e) {
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', this.node.id)
     },
 
-    saveEdit() {
-      const t = String(this.editTitle || '').trim()
-      if (!t) return
-      this.node.title = t
-      this.editing = false
-      this.$emit('update')
+    onDragOver(e) {
+      e.preventDefault()
+      const rect = e.currentTarget.getBoundingClientRect()
+      const y = e.clientY - rect.top
+      const h = rect.height
+
+      this.dropPosition =
+        y < h * 0.25 ? 'before' :
+        y > h * 0.75 ? 'after' :
+        'inside'
     },
 
-    // 🔥 ВАЖНО: ID берётся следующий после максимального среди детей текущего node
-    getNextChildId() {
-      const children = this.node.children || []
-      if (children.length === 0) return this.node.id * 10 + 1 // если пусто — просто красиво
-
-      let maxId = 0
-      for (const c of children) {
-        if (c.id > maxId) maxId = c.id
-      }
-      return maxId + 1
+    onDrop(e) {
+      e.preventDefault()
+      this.$emit('drop-node', {
+        draggedId: Number(e.dataTransfer.getData('text/plain')),
+        targetId: this.node.id,
+        position: this.dropPosition,
+      })
+      this.dropPosition = null
     },
 
     addChild() {
       if (!this.node.children) this.$set(this.node, 'children', [])
-
-      const newId = this.getNextChildId()
-
       this.node.children.push({
-        id: newId,
+        id: Date.now(),
         title: 'Новый элемент',
         type: 'item',
         children: [],
       })
-
       this.expanded = true
       this.$emit('update')
     },
 
     deleteSelf() {
-      // Для корневого элемента — просто очистим детей
-      // (иначе его не удалить, потому что у него нет родителя)
-      if (!this.$parent || !this.$parent.node) {
-        this.node.children = []
-        this.$emit('update')
-        return
-      }
-
-      // Если у компонента есть родитель TreeNode, он пришлёт delete-child
       this.$emit('delete-child', this.node.id)
-    },
-
-    removeChild(childId) {
-      const idx = this.node.children.findIndex((x) => x.id === childId)
-      if (idx !== -1) this.node.children.splice(idx, 1)
-      this.$emit('update')
     },
   },
 }
 </script>
+
+<style scoped>
+.tree-row {
+  user-select: none;
+  border-radius: 4px;
+}
+
+.tree-row.selected {
+  background: #dbeafe;
+}
+
+.tree-row.drop-before {
+  border-top: 2px solid #0d6efd;
+}
+
+.tree-row.drop-after {
+  border-bottom: 2px solid #0d6efd;
+}
+
+.tree-row.drop-inside {
+  background: rgba(13, 110, 253, 0.1);
+}
+</style>
