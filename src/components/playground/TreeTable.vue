@@ -12,7 +12,10 @@
         small
       >
         <template #cell(title)="row">
-          <div class="d-flex align-items-center" :style="{ paddingLeft: `${row.item.level * 18}px` }">
+          <div
+            class="d-flex align-items-center"
+            :style="{ paddingLeft: `${row.item.level * 18}px` }"
+          >
             <b-button
               v-if="row.item.hasChildren"
               size="sm"
@@ -20,10 +23,16 @@
               class="p-0 mr-2"
               @click="toggleRow(row.item.id)"
             >
-              <b-icon :icon="isExpanded(row.item.id) ? 'caret-down-fill' : 'caret-right-fill'" />
+              <b-icon
+                :icon="
+                  isExpanded(row.item.id)
+                    ? 'caret-down-fill'
+                    : 'caret-right-fill'
+                "
+              />
             </b-button>
 
-            <span v-else class="mr-2" style="width: 18px;"></span>
+            <span v-else class="mr-2" style="width: 18px"></span>
 
             <strong>{{ row.item.title }}</strong>
             <small class="text-muted ml-2">#{{ row.item.id }}</small>
@@ -31,22 +40,38 @@
         </template>
 
         <template #cell(type)="row">
-          <b-badge :variant="row.item.type === 'folder' ? 'primary' : 'secondary'">
+          <b-badge
+            :variant="row.item.type === 'folder' ? 'primary' : 'secondary'"
+          >
             {{ row.item.type }}
           </b-badge>
         </template>
 
         <template #cell(actions)="row">
           <div class="d-flex">
-            <b-button size="sm" variant="outline-primary" class="mr-2" @click="openEdit(row.item)">
+            <b-button
+              size="sm"
+              variant="outline-primary"
+              class="mr-2"
+              @click="openEdit(row.item)"
+            >
               <b-icon icon="pencil" />
             </b-button>
 
-            <b-button size="sm" variant="outline-success" class="mr-2" @click="addChild(row.item)">
+            <b-button
+              size="sm"
+              variant="outline-success"
+              class="mr-2"
+              @click="addChild(row.item)"
+            >
               <b-icon icon="plus" />
             </b-button>
 
-            <b-button size="sm" variant="outline-danger" @click="deleteNode(row.item)">
+            <b-button
+              size="sm"
+              variant="outline-danger"
+              @click="deleteNode(row.item)"
+            >
               <b-icon icon="trash" />
             </b-button>
           </div>
@@ -77,9 +102,7 @@
           <b-button variant="secondary" class="mr-2" @click="closeModal">
             Отмена
           </b-button>
-          <b-button variant="success" @click="saveModal">
-            Сохранить
-          </b-button>
+          <b-button variant="success" @click="saveModal"> Сохранить </b-button>
         </div>
       </div>
     </b-modal>
@@ -99,6 +122,8 @@ export default {
         { key: 'type', label: 'Тип', class: 'text-nowrap' },
         { key: 'actions', label: 'Действия', class: 'text-nowrap' },
       ],
+
+      // ⚠️ Set мутировать нельзя без пересоздания
       expandedIds: new Set([1, 2, 5]),
 
       editModal: false,
@@ -144,37 +169,30 @@ export default {
     isExpanded(id) {
       return this.expandedIds.has(id)
     },
+
     toggleRow(id) {
-      if (this.expandedIds.has(id)) this.expandedIds.delete(id)
-      else this.expandedIds.add(id)
-    },
-
-    // 🔥 Следующий ID — только по детям конкретного узла
-    getNextChildId(node) {
-      const children = node.children || []
-      if (children.length === 0) return node.id * 10 + 1
-
-      let maxId = 0
-      for (const c of children) {
-        if (c.id > maxId) maxId = c.id
-      }
-      return maxId + 1
+      const next = new Set(this.expandedIds)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      this.expandedIds = next
     },
 
     addChild(rowItem) {
       const node = rowItem.ref
       if (!node.children) this.$set(node, 'children', [])
 
-      const newId = this.getNextChildId(node)
-
       node.children.push({
-        id: newId,
+        id: Date.now(),
         title: 'Новый элемент',
         type: 'item',
         children: [],
       })
 
-      this.expandedIds.add(node.id)
+      // авто-раскрытие родителя
+      const next = new Set(this.expandedIds)
+      next.add(node.id)
+      this.expandedIds = next
+
       this.$emit('update:nodes', this.nodes)
     },
 
@@ -206,14 +224,13 @@ export default {
     deleteNode(rowItem) {
       const id = rowItem.id
 
-      // Удаление корня запрещаем
+      // корень не удаляем — очищаем детей
       if (!rowItem.parentId) {
         rowItem.ref.children = []
         this.$emit('update:nodes', this.nodes)
         return
       }
 
-      // Найдём родителя и удалим из children
       const parent = this.findById(this.nodes, rowItem.parentId)
       if (!parent || !parent.children) return
 

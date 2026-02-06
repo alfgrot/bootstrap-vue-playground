@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div tabindex="0" @keydown="onKey">
     <h2 class="mb-3">Иерархия (Tree)</h2>
 
     <!-- Поиск -->
@@ -8,6 +8,7 @@
         v-model="search"
         size="sm"
         placeholder="Поиск по дереву..."
+        @keydown.enter.prevent
       />
       <b-input-group-append>
         <b-button size="sm" variant="outline-secondary" @click="search = ''">
@@ -27,6 +28,7 @@
         @select="onSelect"
         @drop-node="handleDrop"
         @update="emitUpdate"
+        @delete-node="deleteNode"
       />
     </b-card>
   </div>
@@ -40,7 +42,7 @@ export default {
   components: { TreeNode },
 
   props: {
-    nodes: Array,
+    nodes: { type: Array, required: true },
   },
 
   data() {
@@ -56,6 +58,11 @@ export default {
       if (!this.search) return this.nodes
       return this.filterTree(this.nodes, this.search.toLowerCase())
     },
+
+    /* 👁 видимый порядок для клавиатуры */
+    visibleIds() {
+      return this.flatten(this.filteredNodes)
+    },
   },
 
   methods: {
@@ -63,17 +70,32 @@ export default {
       this.$emit('update:nodes', this.nodes)
     },
 
+    /* ⌨️ стрелки вверх / вниз */
+    onKey(e) {
+      if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return
+      if (!this.selectedIds.length) return
+
+      e.preventDefault()
+
+      const ids = this.visibleIds
+      const current = ids.indexOf(this.selectedIds[0])
+      if (current === -1) return
+
+      const next =
+        e.key === 'ArrowDown'
+          ? Math.min(current + 1, ids.length - 1)
+          : Math.max(current - 1, 0)
+
+      this.selectedIds = [ids[next]]
+      this.lastSelectedId = ids[next]
+    },
+
     /* 🔍 поиск */
     filterTree(nodes, search) {
       return nodes
         .map((n) => {
-          const children = n.children
-            ? this.filterTree(n.children, search)
-            : []
-          if (
-            n.title.toLowerCase().includes(search) ||
-            children.length
-          ) {
+          const children = n.children ? this.filterTree(n.children, search) : []
+          if (n.title.toLowerCase().includes(search) || children.length) {
             return { ...n, children }
           }
           return null
@@ -125,9 +147,7 @@ export default {
 
     isDescendant(parent, id) {
       if (!parent.children) return false
-      return parent.children.some(
-        (c) => c.id === id || this.isDescendant(c, id)
-      )
+      return parent.children.some((c) => c.id === id || this.isDescendant(c, id))
     },
 
     /* ✅ multi-select */
@@ -174,12 +194,31 @@ export default {
 
       this.emitUpdate()
 
-      /* 🔔 УВЕДОМЛЕНИЕ — ДОЛГО */
       this.$bvToast.toast('Элемент успешно перемещён', {
         title: 'Готово',
         variant: 'success',
         solid: true,
-        autoHideDelay: 5000, // ⬅ 5 секунд
+        autoHideDelay: 5000,
+      })
+    },
+
+    /* 🗑 удаление */
+    deleteNode(id) {
+      // удаляем узел из дерева
+      const removed = this.removeNode(this.nodes, id)
+      if (!removed) return
+
+      // чистим selection чтобы не оставался удалённый id
+      this.selectedIds = this.selectedIds.filter((x) => x !== id)
+      if (this.lastSelectedId === id) this.lastSelectedId = null
+
+      this.emitUpdate()
+
+      this.$bvToast.toast('Элемент удалён', {
+        title: 'Готово',
+        variant: 'warning',
+        solid: true,
+        autoHideDelay: 4000,
       })
     },
   },

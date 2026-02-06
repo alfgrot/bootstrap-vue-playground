@@ -11,6 +11,17 @@
       @dragleave="dropPosition = null"
       @drop="onDrop"
     >
+      <!-- 🧑 АВАТАР -->
+      <div class="mr-2" @click.stop="openAvatarModal">
+        <b-avatar
+          :src="node.avatar || null"
+          size="28px"
+          variant="secondary"
+          icon="person-fill"
+        />
+      </div>
+
+      <!-- expand -->
       <b-button
         v-if="hasChildren"
         size="sm"
@@ -21,17 +32,26 @@
         <b-icon :icon="expanded ? 'caret-down-fill' : 'caret-right-fill'" />
       </b-button>
 
-      <span v-else class="mr-2" style="width:18px"></span>
+      <span v-else class="mr-2" style="width: 18px"></span>
 
-      <b-badge class="mr-2" :variant="node.type === 'folder' ? 'primary' : 'secondary'">
-        <b-icon :icon="node.type === 'folder' ? 'folder-fill' : 'file-earmark'" class="mr-1" />
+      <!-- type -->
+      <b-badge
+        class="mr-2"
+        :variant="node.type === 'folder' ? 'primary' : 'secondary'"
+      >
+        <b-icon
+          :icon="node.type === 'folder' ? 'folder-fill' : 'file-earmark'"
+          class="mr-1"
+        />
         {{ node.type }}
       </b-badge>
 
+      <!-- title -->
       <div class="flex-grow-1">
         <strong v-html="highlight(node.title)" />
       </div>
 
+      <!-- menu -->
       <b-dropdown size="sm" variant="outline-secondary" right>
         <template #button-content>
           <b-icon icon="three-dots-vertical" />
@@ -43,6 +63,7 @@
       </b-dropdown>
     </div>
 
+    <!-- children -->
     <b-collapse :visible="expanded && hasChildren">
       <TreeNode
         v-for="child in node.children"
@@ -54,8 +75,57 @@
         @select="$emit('select', $event)"
         @drop-node="$emit('drop-node', $event)"
         @update="$emit('update')"
+        @delete-node="$emit('delete-node', $event)"
       />
     </b-collapse>
+
+    <!-- 🪟 MODAL: AVATAR -->
+    <b-modal :id="modalId" title="Аватар" hide-footer @hidden="resetAvatar">
+      <div class="text-center mb-3">
+        <b-avatar
+          :src="avatarPreview || node.avatar || null"
+          size="96px"
+          variant="secondary"
+          icon="person-fill"
+        />
+      </div>
+
+      <b-form-file
+        accept="image/*"
+        browse-text="Выбрать"
+        placeholder="Выберите изображение"
+        @change="onFileChange"
+      />
+
+      <div class="d-flex justify-content-end mt-3">
+        <b-button
+          size="sm"
+          variant="outline-danger"
+          class="mr-2"
+          @click="removeAvatar"
+        >
+          Убрать
+        </b-button>
+
+        <b-button
+          size="sm"
+          variant="secondary"
+          class="mr-2"
+          @click="$bvModal.hide(modalId)"
+        >
+          Отмена
+        </b-button>
+
+        <b-button
+          size="sm"
+          variant="primary"
+          :disabled="!avatarPreview"
+          @click="saveAvatar"
+        >
+          Сохранить
+        </b-button>
+      </div>
+    </b-modal>
   </div>
 </template>
 
@@ -64,22 +134,27 @@ export default {
   name: 'TreeNode',
 
   props: {
-    node: Object,
-    level: Number,
-    selectedIds: Array,
-    search: String,
+    node: { type: Object, required: true },
+    level: { type: Number, required: true },
+    selectedIds: { type: Array, required: true },
+    search: { type: String, default: '' },
   },
 
   data() {
     return {
       expanded: true,
-      dropPosition: null, // before | inside | after
+      dropPosition: null,
+      avatarPreview: null,
     }
   },
 
   computed: {
     hasChildren() {
       return this.node.children && this.node.children.length
+    },
+
+    modalId() {
+      return `avatar-modal-${this.node.id}`
     },
 
     rowClasses() {
@@ -93,6 +168,7 @@ export default {
   },
 
   methods: {
+    /* ===== SELECT ===== */
     select(e) {
       this.$emit('select', {
         id: this.node.id,
@@ -103,12 +179,13 @@ export default {
 
     highlight(text) {
       if (!this.search) return text
-      return text.replace(
+      return String(text).replace(
         new RegExp(`(${this.search})`, 'gi'),
         '<mark>$1</mark>'
       )
     },
 
+    /* ===== DRAG ===== */
     onDragStart(e) {
       e.dataTransfer.effectAllowed = 'move'
       e.dataTransfer.setData('text/plain', this.node.id)
@@ -121,9 +198,7 @@ export default {
       const h = rect.height
 
       this.dropPosition =
-        y < h * 0.25 ? 'before' :
-        y > h * 0.75 ? 'after' :
-        'inside'
+        y < h * 0.25 ? 'before' : y > h * 0.75 ? 'after' : 'inside'
     },
 
     onDrop(e) {
@@ -136,20 +211,55 @@ export default {
       this.dropPosition = null
     },
 
+    /* ===== AVATAR ===== */
+    openAvatarModal() {
+      this.$bvModal.show(this.modalId)
+    },
+
+    onFileChange(file) {
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        this.avatarPreview = e.target.result
+      }
+      reader.readAsDataURL(file)
+    },
+
+    saveAvatar() {
+      this.$set(this.node, 'avatar', this.avatarPreview)
+      this.avatarPreview = null
+      this.$emit('update')
+      this.$bvModal.hide(this.modalId)
+    },
+
+    removeAvatar() {
+      this.$set(this.node, 'avatar', null)
+      this.avatarPreview = null
+      this.$emit('update')
+      this.$bvModal.hide(this.modalId)
+    },
+
+    resetAvatar() {
+      this.avatarPreview = null
+    },
+
+    /* ===== CRUD ===== */
     addChild() {
       if (!this.node.children) this.$set(this.node, 'children', [])
+
       this.node.children.push({
         id: Date.now(),
         title: 'Новый элемент',
         type: 'item',
         children: [],
       })
+
       this.expanded = true
       this.$emit('update')
     },
 
     deleteSelf() {
-      this.$emit('delete-child', this.node.id)
+      this.$emit('delete-node', this.node.id)
     },
   },
 }
